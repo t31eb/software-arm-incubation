@@ -72,3 +72,7 @@ cmake --build --preset release-arm
 The result in `cmake-build/arm/Release` starts at 0x3000 like the configuration `Flashstart 0x3000 Release`.
 `linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld` ends the flash at 0xE000, where the MemMapper starts.
 Only the Release build fits, the Debug build (-O0) needs about 72 KB and fails at link time.
+
+`-DMSA_FLASH_START=0x0` links the application to 0x0000 instead, for a device without bootloader that is
+flashed via SWD (e.g. a test bench). The linker script is then generated from the 0x3000 one in the build directory.
+Such a build must not be loaded through the bootloader.
