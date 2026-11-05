@@ -37,6 +37,31 @@ const unsigned char hardwareVersion[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x48 };
 MemMapper memMapper = MemMapper(0xe000, 0x1000, false);
 
 /**
+ * Copy the configuration of one item from the user EEPROM or the MemMapper into a new buffer on the heap.
+ *
+ * The items keep a pointer to their configuration and read it in every Loop(). They get this copy instead of a
+ * pointer into the configuration memory, so after setup() nothing reads the non-volatile memory through pointers.
+ * ETS restarts the device after every download, so the copy can't get stale.
+ *
+ * @param virtAddress Virtual (ETS) address of the configuration.
+ * @param length      Number of bytes to copy.
+ * @return The copy; zeros where the memory couldn't be read.
+ */
+static uint8_t* copyConfig(const uint32_t virtAddress, const uint32_t length)
+{
+    auto* copy = new uint8_t[length]();
+    if (bcu.userEeprom->inRange(virtAddress))
+    {
+        (void) bcu.userEeprom->readBlock(virtAddress, copy, length);
+    }
+    else
+    {
+        (void) memMapper.readMemPtr(virtAddress, copy, length, false);
+    }
+    return copy;
+}
+
+/**
  * Application setup
  */
 BcuBase* setup()
@@ -56,9 +81,11 @@ BcuBase* setup()
     HelperFunctions::setFlagsTablePtr(bcu.comObjects, 0x6C5);
     uint16_t objRamPointer = 0x5FC;
 
-    DeviceConfig* deviceConfig = (DeviceConfig*)&(*bcu.userEeprom)[CONFIG_ADDRESS];
+    DeviceConfig deviceConfigCopy {};
+    (void) bcu.userEeprom->readBlock(CONFIG_ADDRESS, (uint8_t*)&deviceConfigCopy, sizeof(deviceConfigCopy));
+    const DeviceConfig* deviceConfig = &deviceConfigCopy;
     uint8_t nextComObj = 1;
-    uint8_t* configPos = memMapper.memoryPtr(0x6000, false);
+    uint32_t configAddress = 0x6000; // configuration of the I2C items, in the MemMapper
 
   /*  if (deviceConfig->BusSwitches & BusSwitch::SPI0)
     {
@@ -88,49 +115,61 @@ BcuBase* setup()
 
     	for (int i = 0; i < deviceConfig->PCA9555DCount; i++)
     	{
-    		firstItem = new PCA9555DItem(nextComObj, (PCA9555DConfig*)configPos, firstItem, objRamPointer);
+    		// variable length, at most 16 pins; the item tells the real length afterwards
+    		constexpr uint32_t maxLength = sizeof(PCA9555DConfig) + 16 * sizeof(PCA9555DPinConfig);
+    		firstItem = new PCA9555DItem(nextComObj, (PCA9555DConfig*)copyConfig(configAddress, maxLength), firstItem,
+    		                             objRamPointer);
     		nextComObj += firstItem->ComObjCount();
-    		configPos += firstItem->ConfigLength();
+    		configAddress += firstItem->ConfigLength();
     	}
 
     	for (int i = 0; i < deviceConfig->CCS811Count; i++)
     	{
-    		firstItem = new CCS811Item(nextComObj, (CCS811Config*)configPos, firstItem, objRamPointer);
+    		firstItem = new CCS811Item(nextComObj, (CCS811Config*)copyConfig(configAddress, sizeof(CCS811Config)),
+    		                           firstItem, objRamPointer);
     		nextComObj += firstItem->ComObjCount();
-    		configPos += firstItem->ConfigLength();
+    		configAddress += firstItem->ConfigLength();
     	}
 
     	if (deviceConfig->SHTOption & SHTSwitch::SHT2x)
     	{
-    		firstItem = new SHT2xItem(nextComObj, (TempHumSensorConfig*)configPos, firstItem, objRamPointer);
+    		firstItem = new SHT2xItem(nextComObj,
+    		                      (TempHumSensorConfig*)copyConfig(configAddress, sizeof(TempHumSensorConfig)),
+    		                      firstItem, objRamPointer);
     		nextComObj += firstItem->ComObjCount();
-    		configPos += firstItem->ConfigLength();
+    		configAddress += firstItem->ConfigLength();
     	}
 
     	if (deviceConfig->SHTOption & SHTSwitch::SHT4x)
     	{
-    		firstItem = new SHT4xItem(nextComObj, (TempHumSensorConfig*)configPos, firstItem, objRamPointer);
+    		firstItem = new SHT4xItem(nextComObj,
+    		                      (TempHumSensorConfig*)copyConfig(configAddress, sizeof(TempHumSensorConfig)),
+    		                      firstItem, objRamPointer);
     		nextComObj += firstItem->ComObjCount();
-    		configPos += firstItem->ConfigLength();
+    		configAddress += firstItem->ConfigLength();
     	}
 
     	if (deviceConfig->SHTOption & SHTSwitch::SGP4x)
     	{
-    		firstItem = new SGP4xItem(nextComObj, (TempHumSensorConfig*)configPos, firstItem, objRamPointer);
+    		firstItem = new SGP4xItem(nextComObj,
+    		                      (TempHumSensorConfig*)copyConfig(configAddress, sizeof(TempHumSensorConfig)),
+    		                      firstItem, objRamPointer);
     		nextComObj += firstItem->ComObjCount();
-    		configPos += firstItem->ConfigLength();
+    		configAddress += firstItem->ConfigLength();
     	}
     }
 
-    configPos = &(*bcu.userEeprom)[CONFIG_ADDRESS + sizeof(DeviceConfig)];
+    configAddress = CONFIG_ADDRESS + sizeof(DeviceConfig); // configuration of the ARM pins, in the user EEPROM
     unsigned int pinCount = sizeof(ARMPinItem::PortPins) / sizeof(ARMPinItem::PortPins[0]);
 	for (unsigned int i = 0; i < pinCount; i++)
 	{
 		if (deviceConfig->PortAssignment[i] > 0 && deviceConfig->PortAssignment[i] <= pinCount)
 		{
-			firstItem = new ARMPinItem(nextComObj, deviceConfig->PortAssignment[i] - 1, (ARMPinConfig*)configPos, firstItem, objRamPointer);
+			firstItem = new ARMPinItem(nextComObj, deviceConfig->PortAssignment[i] - 1,
+			                           (ARMPinConfig*)copyConfig(configAddress, sizeof(ARMPinConfig)), firstItem,
+			                           objRamPointer);
 			nextComObj += firstItem->ComObjCount();
-			configPos += firstItem->ConfigLength();
+			configAddress += firstItem->ConfigLength();
 		}
 	}
 
