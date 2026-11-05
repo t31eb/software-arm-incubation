@@ -9,10 +9,44 @@
 #include "HelperFunctions.h"
 #include <sblib/eib/typesBCU2.h>
 
+MsaComObjectLayout HelperFunctions::layout;
+
+bool MsaComObjectLayout::object(const int objno, uint8_t& type, uint16_t& valueAddress)
+{
+	if (objno < 0 || objno >= capacity || entries[objno].type == UNKNOWN)
+	{
+		return false;
+	}
+	type = entries[objno].type;
+	valueAddress = entries[objno].address;
+	return true;
+}
+
+void MsaComObjectLayout::setObject(const int objno, const uint8_t type, const uint16_t valueAddress)
+{
+	if (objno < 0)
+	{
+		return;
+	}
+	if (objno >= capacity)
+	{
+		const int newCapacity = objno + 16;
+		Entry* grown = new Entry[newCapacity];
+		for (int i = 0; i < newCapacity; i++)
+		{
+			grown[i] = (i < capacity) ? entries[i] : Entry {0, UNKNOWN};
+		}
+		delete[] entries;
+		entries = grown;
+		capacity = newCapacity;
+	}
+	entries[objno] = Entry {valueAddress, type};
+}
+
 void HelperFunctions::setComObjPtr(ComObjects* bcu, int objno, ComType type, uint16_t &newAddr)
 {
-	const uint8_t* configTable = bcu->objectConfigTable();
-	if (configTable != nullptr)
+	uint8_t objectCount;
+	if (bcu->readObjectConfigTable(0, &objectCount, 1)) // only with a loaded com object table, as before
 	{
 		int size = 1;
 	    if (type > BYTE_1)
@@ -26,21 +60,8 @@ void HelperFunctions::setComObjPtr(ComObjects* bcu, int objno, ComType type, uin
 	    	newAddr = 0x6C5 + 128;
 	    }
 
-	    uint16_t offSet = 1 + sizeof(ComConfigBCU2::DataPtrType) + objno * sizeof(ComConfigBCU2);
-		ComConfigBCU2* cfg = (ComConfigBCU2*) (configTable + offSet);
-		cfg->baseConfig.type = type;
-
-		uint8_t * addr = (uint8_t *) &cfg->dataPtr;
-	    if (false)
-	    {
-	    	addr[1] = (newAddr >> 8) & 0xFF;
-	    	addr[0] = newAddr & 0xFF;
-	    }
-	    else
-	    {
-	    	addr[0] = (newAddr >> 8) & 0xFF;
-	    	addr[1] = newAddr & 0xFF;
-	    }
+	    // before, type and data pointer were written into the com object table at every start
+	    layout.setObject(objno, type, newAddr);
 
 	    newAddr += size;
 	}
@@ -48,18 +69,9 @@ void HelperFunctions::setComObjPtr(ComObjects* bcu, int objno, ComType type, uin
 
 void HelperFunctions::setFlagsTablePtr(ComObjects* bcu, uint16_t flagsAddr)
 {
-    uint8_t* configTable = bcu->objectConfigTable();
-	if (configTable != nullptr)
+	uint8_t objectCount;
+	if (bcu->readObjectConfigTable(0, &objectCount, 1))
 	{
-	    if (false)
-	    {
-	    	configTable[2] = (flagsAddr >> 8) & 0xFF;
-	    	configTable[1] = flagsAddr & 0xFF;
-	    }
-	    else
-	    {
-	    	configTable[1] = (flagsAddr >> 8) & 0xFF;
-	    	configTable[2] = flagsAddr & 0xFF;
-	    }
+		layout.setFlagsTable(flagsAddr);
 	}
 }

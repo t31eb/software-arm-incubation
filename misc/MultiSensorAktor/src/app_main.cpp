@@ -78,6 +78,7 @@ BcuBase* setup()
     memMapper.addRange(0x6000, 0xF00);
     bcu.setMemMapper(&memMapper);
 
+    bcu.comObjects->setObjectLayout(&HelperFunctions::layout);
     HelperFunctions::setFlagsTablePtr(bcu.comObjects, 0x6C5);
     uint16_t objRamPointer = 0x5FC;
 
