@@ -8,6 +8,7 @@
 #include <sblib/eibMASK0701.h>
 #include <sblib/eib/userEepromFlash.h>
 #include <sblib/eib/userEepromSpi.h>
+#include <sblib/eib/userMemoryExtension.h>
 #include <sblib/spi_eeprom.h>
 #include <sblib/spi.h>
 #include <sblib/i2c.h>
@@ -47,7 +48,18 @@ GenericItem *firstItem = nullptr;
 
 const unsigned char hardwareVersion[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x48 };
 
+// Configuration of the I2C items, segment 0x6000-0x6EFF of the product database outside of the user EEPROM
+#define CONFIG_EXTENSION_START 0x6000
+#define CONFIG_EXTENSION_SIZE 0xF00
+
+#ifdef MSA_USER_EEPROM_SPI
+// In the same chip as the user EEPROM, with a header of its own at 0x1000; no flash sector, no RAM buffer
+UserEepromSpi configExtensionSpi(spiEeprom, CONFIG_EXTENSION_SIZE, 0x1000);
+UserMemoryExtension configExtension(CONFIG_EXTENSION_START, CONFIG_EXTENSION_SIZE, &configExtensionSpi);
+#else
+// In the flash sector 0xE000-0xEFFF, through the MemMapper (256 bytes buffer in RAM)
 MemMapper memMapper = MemMapper(0xe000, 0x1000, false);
+#endif
 
 /**
  * Copy the configuration of one item from the user EEPROM or the MemMapper into a new buffer on the heap.
@@ -63,14 +75,13 @@ MemMapper memMapper = MemMapper(0xe000, 0x1000, false);
 static uint8_t* copyConfig(const uint32_t virtAddress, const uint32_t length)
 {
     auto* copy = new uint8_t[length]();
-    if (bcu.userEeprom->inRange(virtAddress))
+    uint32_t readable = length;
+    const uint32_t extensionEnd = CONFIG_EXTENSION_START + CONFIG_EXTENSION_SIZE;
+    if ((virtAddress >= CONFIG_EXTENSION_START) && (virtAddress < extensionEnd) && (virtAddress + length > extensionEnd))
     {
-        (void) bcu.userEeprom->readBlock(virtAddress, copy, length);
+        readable = extensionEnd - virtAddress; // a maximum length must not leave the range, the rest stays 0
     }
-    else
-    {
-        (void) memMapper.readMemPtr(virtAddress, copy, length, false);
-    }
+    (void) bcu.readUserMemory(virtAddress, copy, readable); // user EEPROM, MemMapper or extension
     return copy;
 }
 
@@ -88,8 +99,12 @@ BcuBase* setup()
     pinMode(PIO_LED, OUTPUT);
     digitalWrite(PIO_LED, 1);
 
-    memMapper.addRange(0x6000, 0xF00);
+#ifdef MSA_USER_EEPROM_SPI
+    bcu.setUserMemoryExtension(&configExtension);
+#else
+    memMapper.addRange(CONFIG_EXTENSION_START, CONFIG_EXTENSION_SIZE);
     bcu.setMemMapper(&memMapper);
+#endif
 
     bcu.comObjects->setObjectLayout(&HelperFunctions::layout);
     HelperFunctions::setFlagsTablePtr(bcu.comObjects, 0x6C5);
@@ -99,7 +114,7 @@ BcuBase* setup()
     (void) bcu.userEeprom->readBlock(CONFIG_ADDRESS, (uint8_t*)&deviceConfigCopy, sizeof(deviceConfigCopy));
     const DeviceConfig* deviceConfig = &deviceConfigCopy;
     uint8_t nextComObj = 1;
-    uint32_t configAddress = 0x6000; // configuration of the I2C items, in the MemMapper
+    uint32_t configAddress = CONFIG_EXTENSION_START; // configuration of the I2C items
 
   /*  if (deviceConfig->BusSwitches & BusSwitch::SPI0)
     {
