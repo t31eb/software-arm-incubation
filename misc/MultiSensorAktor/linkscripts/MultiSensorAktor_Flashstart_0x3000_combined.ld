@@ -1,7 +1,8 @@
 /*
  * Based on the generated linker script of firmware_updater/bootloaderupdater.
- * Changed for the MultiSensorAktor: flash ends at 0xE000, where the flash of its MemMapper starts,
- * so an application growing into it fails at link time.
+ * Changed for the MultiSensorAktor: the flash ends where its configuration in the flash starts,
+ * so an application growing into it fails at link time. CMake replaces start and end for other
+ * variants (MSA_FLASH_START, MSA_USER_EEPROM, see CMakeLists.txt).
  * Copyright 2008-2013 Code Red Technologies Ltd,
  * Copyright 2013-2026 NXP
  * SPDX-License-Identifier: BSD-3-Clause

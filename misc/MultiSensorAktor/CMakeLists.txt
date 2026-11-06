@@ -60,16 +60,7 @@ target_compile_options(${TARGET_ARM} PRIVATE
 # 0x3000: behind the Selfbus bootloader (default). 0x0: without bootloader, e.g. flashed via SWD on a test bench.
 set(MSA_FLASH_START "0x3000" CACHE STRING "Flash address the application is linked to (0x3000 or 0x0)")
 set_property(CACHE MSA_FLASH_START PROPERTY STRINGS "0x3000" "0x0")
-if(MSA_FLASH_START STREQUAL "0x3000")
-    set(MSA_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld)
-elseif(MSA_FLASH_START STREQUAL "0x0")
-    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld MSA_LINKER_SCRIPT_TEXT)
-    string(REPLACE "0x3000" "0x0" MSA_LINKER_SCRIPT_TEXT "${MSA_LINKER_SCRIPT_TEXT}")
-    set(MSA_LINKER_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/MultiSensorAktor_Flashstart_0x0_combined.ld)
-    file(WRITE ${MSA_LINKER_SCRIPT} "${MSA_LINKER_SCRIPT_TEXT}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld)
-else()
+if(NOT MSA_FLASH_START MATCHES "^0x(3000|0)$")
     message(FATAL_ERROR "MSA_FLASH_START must be 0x3000 or 0x0, not ${MSA_FLASH_START}")
 endif()
 
@@ -84,6 +75,27 @@ elseif(MSA_USER_EEPROM STREQUAL "MB85RS256B")
 elseif(NOT MSA_USER_EEPROM STREQUAL "flash")
     message(FATAL_ERROR "MSA_USER_EEPROM must be flash, M95512R or MB85RS256B, not ${MSA_USER_EEPROM}")
 endif()
+
+# The application ends where the configuration in the flash starts (0xE000: I2C configuration 0xE100-0xEFFF, user
+# EEPROM 0xF000-0xFBFF, see README.md), so growing into it fails at link time. With the configuration in an SPI EEPROM
+# the whole flash up to 0x10000 is free. The linker script is generated from the one for 0x3000-0xE000.
+if(MSA_USER_EEPROM STREQUAL "flash")
+    set(MSA_FLASH_END "0xE000")
+else()
+    set(MSA_FLASH_END "0x10000")
+endif()
+if(MSA_FLASH_START STREQUAL "0x3000" AND MSA_FLASH_END STREQUAL "0xE000")
+    set(MSA_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld)
+else()
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld MSA_LINKER_SCRIPT_TEXT)
+    string(REPLACE "0x3000" "${MSA_FLASH_START}" MSA_LINKER_SCRIPT_TEXT "${MSA_LINKER_SCRIPT_TEXT}")
+    string(REPLACE "0xE000" "${MSA_FLASH_END}" MSA_LINKER_SCRIPT_TEXT "${MSA_LINKER_SCRIPT_TEXT}")
+    set(MSA_LINKER_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/MultiSensorAktor_Flashstart_${MSA_FLASH_START}_combined.ld)
+    file(WRITE ${MSA_LINKER_SCRIPT} "${MSA_LINKER_SCRIPT_TEXT}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld)
+endif()
+message(STATUS "MultiSensorAktor: flash ${MSA_FLASH_START}-${MSA_FLASH_END}, user EEPROM ${MSA_USER_EEPROM}")
 
 target_link_options(${TARGET_ARM} PRIVATE
     -T ${MSA_LINKER_SCRIPT}
