@@ -37,8 +37,11 @@ SpiEeprom spiEeprom(spiEepromBus, MSA_USER_EEPROM_SPI);
 UserEepromSpi userEepromSpi(spiEeprom, UserEepromMASK0701::SIZE);
 MASK0701 bcu = MASK0701(&userEepromSpi);
 #else
-// The user EEPROM stays in the flash, only one page of 256 bytes is cached in RAM instead of a mirror of 3 KB
-MASK0701 bcu = MASK0701(new UserEepromFlash(UserEepromMASK0701::SIZE));
+// The user EEPROM stays in the flash (last sector, 0xF000), only one page of 256 bytes is cached in RAM instead of a
+// mirror of 3 KB. The configuration of the I2C items below shares this page.
+FlashPageCache flashPageCache;
+UserEepromFlash userEepromFlash(UserEepromMASK0701::SIZE, flashPageCache);
+MASK0701 bcu = MASK0701(&userEepromFlash);
 #endif
 
 // Digital pin for LED
@@ -57,12 +60,14 @@ const unsigned char hardwareVersion[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x48 };
 UserEepromSpi configExtensionSpi(spiEeprom, CONFIG_EXTENSION_SIZE, 0x1000);
 UserMemoryExtension configExtension(CONFIG_EXTENSION_START, CONFIG_EXTENSION_SIZE, &configExtensionSpi);
 #else
-// In the flash sector 0xE000-0xEFFF, through the MemMapper (256 bytes buffer in RAM)
-MemMapper memMapper = MemMapper(0xe000, 0x1000, false);
+// In the flash at 0xE100-0xEFFF, where the MemMapper of earlier versions kept it (its allocation table at 0xE000 mapped
+// the pages in order), so no new download is needed. Written through the cache page of the user EEPROM.
+UserEepromFlash configExtensionFlash(CONFIG_EXTENSION_SIZE, flashPageCache, 0xE100);
+UserMemoryExtension configExtension(CONFIG_EXTENSION_START, CONFIG_EXTENSION_SIZE, &configExtensionFlash);
 #endif
 
 /**
- * Copy the configuration of one item from the user EEPROM or the MemMapper into a new buffer on the heap.
+ * Copy the configuration of one item from the user EEPROM or its extension into a new buffer on the heap.
  *
  * The items keep a pointer to their configuration and read it in every Loop(). They get this copy instead of a
  * pointer into the configuration memory, so after setup() nothing reads the non-volatile memory through pointers.
@@ -81,7 +86,7 @@ static uint8_t* copyConfig(const uint32_t virtAddress, const uint32_t length)
     {
         readable = extensionEnd - virtAddress; // a maximum length must not leave the range, the rest stays 0
     }
-    (void) bcu.readUserMemory(virtAddress, copy, readable); // user EEPROM, MemMapper or extension
+    (void) bcu.readUserMemory(virtAddress, copy, readable); // user EEPROM or extension
     return copy;
 }
 
@@ -99,12 +104,7 @@ BcuBase* setup()
     pinMode(PIO_LED, OUTPUT);
     digitalWrite(PIO_LED, 1);
 
-#ifdef MSA_USER_EEPROM_SPI
     bcu.setUserMemoryExtension(&configExtension);
-#else
-    memMapper.addRange(CONFIG_EXTENSION_START, CONFIG_EXTENSION_SIZE);
-    bcu.setMemMapper(&memMapper);
-#endif
 
     bcu.comObjects->setObjectLayout(&HelperFunctions::layout);
     HelperFunctions::setFlagsTablePtr(bcu.comObjects, 0x6C5);
