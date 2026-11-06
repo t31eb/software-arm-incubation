@@ -7,6 +7,8 @@
 #include <sblib/eib/bcu_base.h>
 #include <sblib/eibMASK0701.h>
 #include <sblib/eib/userEepromFlash.h>
+#include <sblib/eib/userEepromSpi.h>
+#include <sblib/spi_eeprom.h>
 #include <sblib/spi.h>
 #include <sblib/i2c.h>
 #include <cstring>
@@ -26,8 +28,17 @@
 APP_VERSION("MSA     ", "0", "16"); // Don't forget to also change the build-variable sw_version
 #define CONFIG_ADDRESS 0x4800
 
+#ifdef MSA_USER_EEPROM_SPI
+// The user EEPROM in an SPI EEPROM or FRAM at SSP1 (J1/IC6), 12 MHz, chip select as GPIO (CMake option MSA_USER_EEPROM).
+// Nothing is kept in RAM; the chip starts in bcu.begin(). Don't use SSP1 for anything else then.
+SpiEepromBusSsp spiEepromBus(SPI_PORT_1, PIO3_2, PIO2_2, PIO2_3, PIO2_4);
+SpiEeprom spiEeprom(spiEepromBus, MSA_USER_EEPROM_SPI);
+UserEepromSpi userEepromSpi(spiEeprom, UserEepromMASK0701::SIZE);
+MASK0701 bcu = MASK0701(&userEepromSpi);
+#else
 // The user EEPROM stays in the flash, only one page of 256 bytes is cached in RAM instead of a mirror of 3 KB
 MASK0701 bcu = MASK0701(new UserEepromFlash(UserEepromMASK0701::SIZE));
+#endif
 
 // Digital pin for LED
 #define PIO_LED PIO2_0

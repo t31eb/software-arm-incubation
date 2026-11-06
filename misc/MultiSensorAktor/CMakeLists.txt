@@ -73,6 +73,18 @@ else()
     message(FATAL_ERROR "MSA_FLASH_START must be 0x3000 or 0x0, not ${MSA_FLASH_START}")
 endif()
 
+# Where the user EEPROM (the configuration of ETS) is kept: in the flash with a cache of one page (default), or in an
+# SPI EEPROM / FRAM at SSP1 (connector J1 or IC6 of the io-16x-fused-fm).
+set(MSA_USER_EEPROM "flash" CACHE STRING "Backend of the user EEPROM: flash, M95512R or MB85RS256B")
+set_property(CACHE MSA_USER_EEPROM PROPERTY STRINGS "flash" "M95512R" "MB85RS256B")
+if(MSA_USER_EEPROM STREQUAL "M95512R")
+    target_compile_definitions(${TARGET_ARM} PRIVATE MSA_USER_EEPROM_SPI=SPI_EEPROM_M95512R)
+elseif(MSA_USER_EEPROM STREQUAL "MB85RS256B")
+    target_compile_definitions(${TARGET_ARM} PRIVATE MSA_USER_EEPROM_SPI=SPI_FRAM_MB85RS256B)
+elseif(NOT MSA_USER_EEPROM STREQUAL "flash")
+    message(FATAL_ERROR "MSA_USER_EEPROM must be flash, M95512R or MB85RS256B, not ${MSA_USER_EEPROM}")
+endif()
+
 target_link_options(${TARGET_ARM} PRIVATE
     -T ${MSA_LINKER_SCRIPT}
     -Xlinker -Map=$<TARGET_FILE_DIR:${TARGET_ARM}>/${TARGET_ARM}.map
