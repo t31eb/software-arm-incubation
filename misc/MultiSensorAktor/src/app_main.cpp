@@ -6,6 +6,7 @@
 
 #include <sblib/eib/bcu_base.h>
 #include <sblib/eibMASK0701.h>
+#include <sblib/eib/userEepromFlash.h>
 #include <sblib/spi.h>
 #include <sblib/i2c.h>
 #include <cstring>
@@ -25,7 +26,8 @@
 APP_VERSION("MSA     ", "0", "16"); // Don't forget to also change the build-variable sw_version
 #define CONFIG_ADDRESS 0x4800
 
-MASK0701 bcu = MASK0701();
+// The user EEPROM stays in the flash, only one page of 256 bytes is cached in RAM instead of a mirror of 3 KB
+MASK0701 bcu = MASK0701(new UserEepromFlash(UserEepromMASK0701::SIZE));
 
 // Digital pin for LED
 #define PIO_LED PIO2_0
