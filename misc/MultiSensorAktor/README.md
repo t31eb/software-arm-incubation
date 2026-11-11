@@ -76,3 +76,8 @@ Only the Release build fits, the Debug build (-O0) needs about 72 KB and fails a
 `-DMSA_FLASH_START=0x0` links the application to 0x0000 instead, for a device without bootloader that is
 flashed via SWD (e.g. a test bench). The linker script is then generated from the 0x3000 one in the build directory.
 Such a build must not be loaded through the bootloader.
+
+## Unit tests
+
+`test/` builds the unit tests on the host (x64) against the CPU emulation and Catch of the sblib repository,
+see `test/README.md`.
