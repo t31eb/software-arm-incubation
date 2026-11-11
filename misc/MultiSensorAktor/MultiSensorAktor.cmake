@@ -13,6 +13,7 @@ set(MSA_SRC
     src/OutputPin.cpp
     src/PCA9555DItem.cpp
     src/PWMPin.cpp
+    src/PwmController.cpp
     src/SGP4xItem.cpp
     src/SHT2xItem.cpp
     src/SHT4xItem.cpp
