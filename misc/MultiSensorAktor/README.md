@@ -77,6 +77,11 @@ flash starts (see below). Only the Release build fits, the Debug build (-O0) nee
 flashed via SWD (e.g. a test bench). The linker script is then generated from the 0x3000 one in the build directory.
 Such a build must not be loaded through the bootloader.
 
+## Unit tests
+
+`test/` builds the unit tests on the host (x64) against the CPU emulation and Catch of the sblib repository,
+see `test/README.md`.
+
 ## Configuration memory
 
 ETS writes two ranges: the user EEPROM of mask 0701 (0x3F00-0x4AFF, 3072 bytes: tables, load states, the
