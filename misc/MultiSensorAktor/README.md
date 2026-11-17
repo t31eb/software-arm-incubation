@@ -60,6 +60,28 @@ Work in progress:
 Knxprod:
 the contents of the folder KnxProd (not the folder itself) have to zipped to MultiSensorAktor.knxprod. This file can be signed with the KnxProdEditor (https://github.com/knxprodeditor/KNXprodEditor), just open and save. Do not edit in the editor, it doesn't support all necessary features! The signed knxprod can be imported into ETS5 & 6 (maybe also 4)
 
+## Building with CMake
+
+The preset `arm` uses the toolchain file of the sblib, `cmake/toolchains/arm-none-eabi_mcuxpresso.cmake`: it takes the
+compiler and the LinkServer tools of an MCUXpresso IDE (11.9.0 or newer) from `TOOLCHAIN_PREFIX` or the environment
+variable `MCUXPRESSO_TOOLCHAIN_PATH`:
+
+```sh
+cmake --preset arm -DTOOLCHAIN_PREFIX=<MCUXpresso>/ide/tools -DSB_PATH_TO_SBLIB_REPO=<sblib repository>
+cmake --build --preset release-arm
+```
+
+Another arm-none-eabi toolchain (e.g. Debian's `gcc-arm-none-eabi`) needs its own toolchain file, given with
+`-DCMAKE_TOOLCHAIN_FILE=<toolchain file>`; the sblib does not have one for it yet.
+
+The result in `cmake-build/arm/Release` starts at 0x3000 like the configuration `Flashstart 0x3000 Release`.
+`linkscripts/MultiSensorAktor_Flashstart_0x3000_combined.ld` ends the flash at 0xE000, where the MemMapper starts.
+Only the Release build fits, the Debug build (-O0) needs about 72 KB and fails at link time.
+
+`-DMSA_FLASH_START=0x0` links the application to 0x0000 instead, for a device without bootloader that is
+flashed via SWD (e.g. a test bench). The linker script is then generated from the 0x3000 one in the build directory.
+Such a build must not be loaded through the bootloader.
+
 ## PWM outputs
 
 Every ARM pin can be a PWM output (100 Hz, value 0-255 from the 1-byte object, 255 = on all the time), all at once
